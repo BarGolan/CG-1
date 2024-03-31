@@ -143,6 +143,13 @@ class SeamImage:
         self.resized_rgb = resized_rgb
         self.resized_gs = resized_gs
         self.w = new_width  
+
+        if self.vis_seams:
+            self.update_vis_seam(seam_to_remove)
+
+    def update_vis_seam(self, seam_to_remove):
+        for i, col in enumerate(seam_to_remove):
+            self.seams_rgb[i, col, :] = [1, 0, 0]  
             
 
     def reinit(self):
@@ -237,7 +244,7 @@ class VerticalSeamImage(SeamImage):
             self.remove_seam()
             self.update_ref_mat()
         
-        self.paint_seams()
+        
 
     def paint_seams(self):
         for s in self.seam_history:
