@@ -288,7 +288,7 @@ class VerticalSeamImage(SeamImage):
 
         for row in range(self.h - 1, -1, -1):
             seam.append(current_col)
-            current_col += self.backtrack_mat[row, current_col][0] - 1
+            current_col += self.backtrack_mat[row, current_col][0]
 
         seam.reverse()
         self.seam_history.append(seam)
