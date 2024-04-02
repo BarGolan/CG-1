@@ -115,41 +115,42 @@ class SeamImage:
         pass
 
     def rotate_mats(self, clockwise):
-        pass
+        self.w , self.h = self.h , self.w
+        if clockwise:
+            self.resized_gs = np.rot90(self.resized_gs, k=-1)
+        else:
+            self.resized_gs = np.rot90(self.resized_gs, k=1)
 
     def init_mats(self):
         pass
 
-    def update_ref_mat(self):
-        for i, s in enumerate(self.seam_history[-1]):
-            self.idx_map[i, s:] += 1
+    def update_ref_mat(self,h_or_v_flag):
+        if h_or_v_flag:
+            for i, s in enumerate(self.seam_history[-1]):
+                self.idx_map_h[i, s:] += 1
+        else:
+            for i, s in enumerate(self.seam_history[-1]):
+                self.idx_map_v[i, :s+1] += 1
+
 
     def backtrack_seam(self):
         pass
 
     def remove_seam(self):
         seam_to_remove = self.seam_history[-1]
+        self.w -= 1
 
-        new_width = self.resized_rgb.shape[1] - 1
-
-        resized_rgb = np.zeros((self.h, new_width, 3), dtype=self.resized_rgb.dtype)
-        resized_gs = np.zeros((self.h, new_width,1), dtype=self.resized_gs.dtype)
+        resized_rgb = np.zeros((self.h, self.w, 3), dtype=self.resized_rgb.dtype)
+        resized_gs = np.zeros((self.h, self.w,1), dtype=self.resized_gs.dtype)
 
         for i, col in enumerate(seam_to_remove):
             resized_rgb[i] = np.delete(self.resized_rgb[i], col, axis=0)
             resized_gs[i] = np.delete(self.resized_gs[i], col, axis=0)
 
- 
         self.resized_rgb = resized_rgb
-        self.resized_gs = resized_gs
-        self.w = new_width  
+        self.resized_gs = resized_gs  
 
-        if self.vis_seams:
-            self.update_vis_seam(seam_to_remove)
 
-    def update_vis_seam(self, seam_to_remove):
-        for i, col in enumerate(seam_to_remove):
-            self.seams_rgb[i, col, :] = [1, 0, 0]  
             
 
     def reinit(self):
@@ -183,20 +184,16 @@ class VerticalSeamImage(SeamImage):
             As taught, the energy is calculated from top to bottom.
             You might find the function 'np.roll' useful.
         """
-        M = np.copy(self.E)
-        
+        M = np.copy(self.E)      
         def calc_cost(i, j, loc):
-
             if loc == "left":
                 if j==0 :
                     return np.inf
                 return M[i - 1, j - 1] + np.abs(self.E[i, j] - self.E[i, j - 1]) + np.abs(self.E[i - 1, j] - self.E[i, j - 1])
-            
             elif loc == "vertical":
                 if j == 0 or j == self.w - 1:
                     return M[i - 1, j]
                 return M[i - 1, j] + np.abs(self.E[i, j+1] - self.E[i, j - 1])
-            
             elif loc == "right":
                 if j == self.w - 1:
                     return np.inf
@@ -212,7 +209,7 @@ class VerticalSeamImage(SeamImage):
 
 
     # @NI_decor
-    def seams_removal(self, num_remove: int):
+    def seams_removal(self, num_remove: int, h_or_v_flag:int):
         """Iterates num_remove times and removes num_remove vertical seams
 
         Parameters:
@@ -242,16 +239,26 @@ class VerticalSeamImage(SeamImage):
             VerticalSeamImage.calc_bt_mat(self.M, self.E, self.backtrack_mat)
             self.backtrack_seam()
             self.remove_seam()
-            self.update_ref_mat()
+            self.update_ref_mat(h_or_v_flag)
         
         
 
-    def paint_seams(self):
+    def paint_seams(self,h_or_v_flag:int):
+        if not h_or_v_flag:
+           self.cumm_mask = np.rot90(self.cumm_mask,k=-1)
+            
+
         for s in self.seam_history:
             for i, s_i in enumerate(s):
                 self.cumm_mask[self.idx_map_v[i, s_i], self.idx_map_h[i, s_i]] = False
+
         cumm_mask_rgb = np.stack([self.cumm_mask] * 3, axis=2)
+        cumm_mask_rgb = cumm_mask_rgb.squeeze()
         self.seams_rgb = np.where(cumm_mask_rgb, self.seams_rgb, [1, 0, 0])
+
+        self.seam_history = []
+        if not h_or_v_flag:
+            self.cumm_mask = np.rot90(self.cumm_mask,k=1)
 
     def init_mats(self):
         self.E = self.calc_gradient_magnitude()
@@ -266,10 +273,13 @@ class VerticalSeamImage(SeamImage):
         Parameters:
             num_remove (int): number of horizontal seam to be removed
         """
-        self.idx_map = self.idx_map_v
+        self.idx_map_v = np.rot90(self.idx_map_v, k=-1)
         self.rotate_mats(clockwise=True)
-        self.seams_removal(num_remove)
+        self.seams_removal(num_remove,0)
         self.rotate_mats(clockwise=False)
+        self.paint_seams(0)
+        self.idx_map_v = np.rot90(self.idx_map_v, k=1)
+
 
     # @NI_decor
     def seams_removal_vertical(self, num_remove):
@@ -278,8 +288,8 @@ class VerticalSeamImage(SeamImage):
         Parameters:
             num_remove (int): umber of vertical seam to be removed
         """
-        self.idx_map = self.idx_map_h
-        self.seams_removal(num_remove)
+        self.seams_removal(num_remove,1)
+        self.paint_seams(1)
 
     # @NI_decor
     def backtrack_seam(self):
