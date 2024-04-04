@@ -130,17 +130,15 @@ class SeamImage:
     def remove_seam(self):
         seam_to_remove = self.seam_history[-1]
         self.w -= 1
+        mask = np.ones_like(self.resized_gs, dtype=bool)
         
+        for row,col in enumerate(seam_to_remove):
+            mask[row,col] = False
+        
+        self.resized_gs = self.resized_gs[mask].reshape(self.h, self.w ,1)
+        mask = np.squeeze(np.stack([mask]*3,axis=2))
+        self.resized_rgb = self.resized_rgb[mask].reshape(self.h,self.w,3)
 
-        resized_rgb = np.zeros((self.h, self.w, 3), dtype=self.resized_rgb.dtype)
-        resized_gs = np.zeros((self.h, self.w,1), dtype=self.resized_gs.dtype)
-
-        for i, col in enumerate(seam_to_remove):
-            resized_rgb[i] = np.delete(self.resized_rgb[i], col, axis=0)
-            resized_gs[i] = np.delete(self.resized_gs[i], col, axis=0)
-
-        self.resized_rgb = resized_rgb
-        self.resized_gs = resized_gs  
 
 
             
@@ -178,35 +176,69 @@ class VerticalSeamImage(SeamImage):
         """
         M = np.copy(self.E)
         # self.backtrack_mat = np.zeros_like(self.E, dtype=int) 
+        rolled_matrix_col_left = np.roll(self.E, -1, axis=1) #𝐼(𝑖, 𝑗 + 1)
+        rolled_matrix_col_right = np.roll(self.E, 1, axis=1) # 𝐼(𝑖, 𝑗 − 1)
+        rolled_matrix_row_down = np.roll(self.E, 1, axis=0)  #𝐼(𝑖 − 1, 𝑗)
+        rolled_matrix_col_left[:,-1]=0
+        rolled_matrix_col_right[:,0]=0
+        rolled_matrix_row_down[0,:]=0
 
-        def calc_cost(i, j, loc):
-            if loc == "left":
-                if j==0 :
-                    return np.inf
-                return M[i - 1, j - 1] + np.abs(self.E[i, j] - self.E[i, j - 1]) + np.abs(self.E[i - 1, j] - self.E[i, j - 1])
-            elif loc == "vertical":
-                if j == 0 or j == self.w - 1:
-                    return M[i - 1, j]
-                return M[i - 1, j] + np.abs(self.E[i, j+1] - self.E[i, j - 1])
-            elif loc == "right":
-                if j == self.w - 1:
-                    return np.inf
-                return M[i - 1, j + 1] + np.abs(self.E[i, j] - self.E[i, j - 1]) + np.abs(self.E[i, j + 1] - self.E[i - 1, j])
+
+        C_L = np.abs(rolled_matrix_col_left - rolled_matrix_col_right) + np.abs(rolled_matrix_row_down-rolled_matrix_col_right)
+        #CL(𝑖, 𝑗) = |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖, 𝑗 − 1)| + |𝐼(𝑖 − 1, 𝑗) − 𝐼(𝑖, 𝑗 − 1)|
+        C_R = np.abs(rolled_matrix_col_left - rolled_matrix_col_right) + np.abs(rolled_matrix_col_left-rolled_matrix_row_down)
+        #CR (𝑖, 𝑗) = |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖, 𝑗 − 1)| + |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖 − 1, 𝑗)|
+        C_V = np.abs(rolled_matrix_col_left - rolled_matrix_col_right)
+        #CV(𝑖, 𝑗) = |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖, 𝑗 − 1)|
+
+
+        M[0, :] = self.E[0, :]
+        M[1:, :] = np.inf
+
+        for i in range(1, self.h):
+            left = np.roll(M[i - 1, :], 1)
+            left[0] = np.inf
+
+            vertical = M[i - 1, :]
+
+            right = np.roll(M[i - 1, :], -1)
+            right[-1] = np.inf 
+
+            total_left = left + C_L[i, :]
+            total_vertical = vertical + C_V[i, :]
+            total_right = right + C_R[i, :]
+
+            M[i, :] = self.E[i, :] + np.min(np.stack([total_left, total_vertical, total_right]), axis=0)
+
+
+        # def calc_cost(i, j, loc):
+        #     if loc == "left":
+        #         if j==0 :
+        #             return np.inf
+        #         return M[i - 1, j - 1] + C_L[i,j]
+        #     elif loc == "vertical":
+        #         if j == 0 or j == self.w - 1:
+        #             return M[i - 1, j]
+        #         return M[i - 1, j] + C_V[i,j]
+        #     elif loc == "right":
+        #         if j == self.w - 1:
+        #             return np.inf
+        #         return M[i - 1, j + 1] + C_R[i,j]
         
-        for row in range(1, self.h):
-            for col in range(self.w):
-                left_cost = calc_cost(row, col, "left")
-                vertical_cost = calc_cost(row, col, "vertical")
-                right_cost = calc_cost(row, col, "right")
-                minimal_cost = min(left_cost,vertical_cost,right_cost)
+        # for row in range(1, self.h):
+        #     for col in range(self.w):
+        #         left_cost = calc_cost(row, col, "left")
+        #         vertical_cost = calc_cost(row, col, "vertical")
+        #         right_cost = calc_cost(row, col, "right")
+        #         minimal_cost = min(left_cost,vertical_cost,right_cost)
 
-                M[row, col] = self.E[row, col] + minimal_cost
-                # if minimal_cost == vertical_cost:
-                #     self.backtrack_mat[row,col] = 0
-                # elif minimal_cost == right_cost:
-                #     self.backtrack_mat[row,col] = 1
-                # else:
-                #     self.backtrack_mat[row,col] = -1
+        #         M[row, col] = self.E[row, col] + minimal_cost
+        #         # if minimal_cost == vertical_cost:
+        #         #     self.backtrack_mat[row,col] = 0
+        #         # elif minimal_cost == right_cost:
+        #         #     self.backtrack_mat[row,col] = 1
+        #         # else:
+        #         #     self.backtrack_mat[row,col] = -1
 
         return M
 
@@ -270,11 +302,13 @@ class VerticalSeamImage(SeamImage):
         """
         self.idx_map = self.idx_map_v
         self.idx_map = np.rot90(self.idx_map, k=1)
+        self.idx_map_v = np.rot90(self.idx_map_v,k=1)
         self.rotate_mats(clockwise=True)
         self.seams_removal(num_remove)
         self.rotate_mats(clockwise=False)
         self.paint_seams()
-        self.idx_map_v = np.rot90(self.idx_map_v, k=-1)
+        self.idx_map_v = np.rot90(self.idx_map_v,k=-1)
+        self.idx_map = np.rot90(self.idx_map, k=-1)
 
 
     # @NI_decor
@@ -287,6 +321,7 @@ class VerticalSeamImage(SeamImage):
         self.idx_map = self.idx_map_h
         self.seams_removal(num_remove)
         self.paint_seams()
+        self.seam_history = []
 
     # @NI_decor
     def backtrack_seam(self):
