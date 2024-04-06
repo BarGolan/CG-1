@@ -111,19 +111,22 @@ class SeamImage:
 
     def rotate_mats(self, clockwise):
         self.w , self.h = self.h , self.w
-        if clockwise:
-            self.resized_gs = np.rot90(self.resized_gs, k=1)
-        else:
-            self.resized_gs = np.rot90(self.resized_gs, k=-1)
+        k = -1 if clockwise else  1
+
+        self.resized_rgb = np.rot90(self.resized_rgb,k)
+        self.resized_gs = np.rot90(self.resized_gs,k)
+        self.idx_map = np.rot90(self.idx_map, k)
+        self.idx_map_v = np.rot90(self.idx_map_v,k)
+        self.idx_map_h = np.rot90(self.idx_map_h, k)
+        self.cumm_mask = np.rot90(self.cumm_mask,k)
+
 
     def init_mats(self):
         pass
 
     def update_ref_mat(self):
         for i, s in enumerate(self.seam_history[-1]):
-            self.idx_map[i, s:] += 1
-            
-
+            self.idx_map[i, s:] += 1       
 
     def backtrack_seam(self):
         pass
@@ -267,13 +270,9 @@ class VerticalSeamImage(SeamImage):
             num_remove (int): number of horizontal seam to be removed
         """
         self.idx_map = self.idx_map_v
-        self.idx_map = np.rot90(self.idx_map, k=1)
-        self.idx_map_v = np.rot90(self.idx_map_v,k=1)
         self.rotate_mats(clockwise=True)
         self.seams_removal(num_remove)
         self.rotate_mats(clockwise=False)
-        self.idx_map_v = np.rot90(self.idx_map_v,k=-1)
-        self.idx_map = np.rot90(self.idx_map, k=-1)
 
 
     # @NI_decor
@@ -285,8 +284,6 @@ class VerticalSeamImage(SeamImage):
         """
         self.idx_map = self.idx_map_h
         self.seams_removal(num_remove)
-        #self.paint_seams()
-        self.seam_history = []
 
     # @NI_decor
     def backtrack_seam(self):
