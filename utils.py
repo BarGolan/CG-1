@@ -91,9 +91,9 @@ class SeamImage:
         rolled_matrix_cols = np.roll(self.resized_gs, -1, axis=1)
         rolled_matrix_rows[-1, :] = 0
         rolled_matrix_cols[:, -1] = 0
-
         rolled_matrix_rows = rolled_matrix_rows - self.resized_gs
         rolled_matrix_cols = rolled_matrix_cols - self.resized_gs
+
         return np.sqrt(np.square(rolled_matrix_rows) + np.square(rolled_matrix_cols))
 
 
@@ -122,6 +122,7 @@ class SeamImage:
     def update_ref_mat(self):
         for i, s in enumerate(self.seam_history[-1]):
             self.idx_map[i, s:] += 1
+            
 
 
     def backtrack_seam(self):
@@ -138,11 +139,7 @@ class SeamImage:
         self.resized_gs = self.resized_gs[mask].reshape(self.h, self.w ,1)
         mask = np.squeeze(np.stack([mask]*3,axis=2))
         self.resized_rgb = self.resized_rgb[mask].reshape(self.h,self.w,3)
-
-
-
             
-
     def reinit(self):
         """re-initiates instance"""
         self.__init__(img_path=self.path)
@@ -175,7 +172,6 @@ class VerticalSeamImage(SeamImage):
             You might find the function 'np.roll' useful.
         """
         M = np.copy(self.E)
-        # self.backtrack_mat = np.zeros_like(self.E, dtype=int) 
         rolled_matrix_col_left = np.roll(self.E, -1, axis=1) #𝐼(𝑖, 𝑗 + 1)
         rolled_matrix_col_right = np.roll(self.E, 1, axis=1) # 𝐼(𝑖, 𝑗 − 1)
         rolled_matrix_row_down = np.roll(self.E, 1, axis=0)  #𝐼(𝑖 − 1, 𝑗)
@@ -190,7 +186,6 @@ class VerticalSeamImage(SeamImage):
         #CR (𝑖, 𝑗) = |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖, 𝑗 − 1)| + |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖 − 1, 𝑗)|
         C_V = np.abs(rolled_matrix_col_left - rolled_matrix_col_right)
         #CV(𝑖, 𝑗) = |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖, 𝑗 − 1)|
-
 
         M[0, :] = self.E[0, :]
         M[1:, :] = np.inf
@@ -209,37 +204,6 @@ class VerticalSeamImage(SeamImage):
             total_right = right + C_R[i, :]
 
             M[i, :] = self.E[i, :] + np.min(np.stack([total_left, total_vertical, total_right]), axis=0)
-
-
-        # def calc_cost(i, j, loc):
-        #     if loc == "left":
-        #         if j==0 :
-        #             return np.inf
-        #         return M[i - 1, j - 1] + C_L[i,j]
-        #     elif loc == "vertical":
-        #         if j == 0 or j == self.w - 1:
-        #             return M[i - 1, j]
-        #         return M[i - 1, j] + C_V[i,j]
-        #     elif loc == "right":
-        #         if j == self.w - 1:
-        #             return np.inf
-        #         return M[i - 1, j + 1] + C_R[i,j]
-        
-        # for row in range(1, self.h):
-        #     for col in range(self.w):
-        #         left_cost = calc_cost(row, col, "left")
-        #         vertical_cost = calc_cost(row, col, "vertical")
-        #         right_cost = calc_cost(row, col, "right")
-        #         minimal_cost = min(left_cost,vertical_cost,right_cost)
-
-        #         M[row, col] = self.E[row, col] + minimal_cost
-        #         # if minimal_cost == vertical_cost:
-        #         #     self.backtrack_mat[row,col] = 0
-        #         # elif minimal_cost == right_cost:
-        #         #     self.backtrack_mat[row,col] = 1
-        #         # else:
-        #         #     self.backtrack_mat[row,col] = -1
-
         return M
 
 
@@ -273,19 +237,21 @@ class VerticalSeamImage(SeamImage):
             self.init_mats()
             VerticalSeamImage.calc_bt_mat(self.M, self.E, self.backtrack_mat)
             self.backtrack_seam()
-            self.remove_seam()
             self.update_ref_mat()
+            self.remove_seam()
+            self.paint_seam()
         
         
-
-    def paint_seams(self):
-        for s in self.seam_history:
-            for i, s_i in enumerate(s):
-                self.cumm_mask[self.idx_map_v[i, s_i], self.idx_map_h[i, s_i]] = False
+    def paint_seam(self):
+        current_seam = self.seam_history[-1]
+        for i, s_i in enumerate(current_seam):
+            self.cumm_mask[self.idx_map_v[i, s_i], self.idx_map_h[i, s_i]] = False
 
         cumm_mask_rgb = np.stack([self.cumm_mask] * 3, axis=2)
         cumm_mask_rgb = cumm_mask_rgb.squeeze()
         self.seams_rgb = np.where(cumm_mask_rgb, self.seams_rgb, [1, 0, 0])
+        self.seam_history.pop()
+        
 
     def init_mats(self):
         self.E = self.calc_gradient_magnitude()
@@ -306,7 +272,6 @@ class VerticalSeamImage(SeamImage):
         self.rotate_mats(clockwise=True)
         self.seams_removal(num_remove)
         self.rotate_mats(clockwise=False)
-        self.paint_seams()
         self.idx_map_v = np.rot90(self.idx_map_v,k=-1)
         self.idx_map = np.rot90(self.idx_map, k=-1)
 
@@ -320,7 +285,7 @@ class VerticalSeamImage(SeamImage):
         """
         self.idx_map = self.idx_map_h
         self.seams_removal(num_remove)
-        self.paint_seams()
+        #self.paint_seams()
         self.seam_history = []
 
     # @NI_decor
@@ -520,3 +485,4 @@ def bilinear(image, new_shape):
         int
     )
     return new_image
+
