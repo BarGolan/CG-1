@@ -94,7 +94,7 @@ class SeamImage:
         rolled_matrix_rows = rolled_matrix_rows - self.resized_gs
         rolled_matrix_cols = rolled_matrix_cols - self.resized_gs
 
-        return np.sqrt(np.square(rolled_matrix_rows) + np.square(rolled_matrix_cols))
+        return np.clip(np.sqrt(np.square(rolled_matrix_rows) + np.square(rolled_matrix_cols)),0,1)
 
 
     def calc_M(self):
