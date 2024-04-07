@@ -387,8 +387,8 @@ class SCWithObjRemoval(VerticalSeamImage):
         Guidelines & hints:
             - for every active mask we need make it binary: {0,1}
         """
-        raise NotImplementedError("TODO: Implement SeamImage.preprocess_masks")
-        print("Active masks:", self.active_masks)
+        for mask in self.active_masks:
+            self.obj_masks[mask] = np.round(self.obj_masks[mask]).astype(bool)
 
     # @NI_decor
     def apply_mask(self):
@@ -398,7 +398,8 @@ class SCWithObjRemoval(VerticalSeamImage):
             - you need to apply the masks on other matrices!
             - think how to force seams to pass through a mask's object..
         """
-        raise NotImplementedError("TODO: Implement SeamImage.apply_mask")
+        for mask in self.active_masks:
+            self.M[self.obj_masks[mask]] = -np.inf
 
     def init_mats(self):
         self.E = self.calc_gradient_magnitude()
@@ -415,6 +416,8 @@ class SCWithObjRemoval(VerticalSeamImage):
         """A wrapper for super.remove_seam method. takes care of the masks."""
         super().remove_seam()
         for k in self.active_masks:
+            print(self.mask.shape)
+            print(self.obj_masks[k].shape)
             self.obj_masks[k] = self.obj_masks[k][self.mask].reshape(self.h, self.w)
 
 
