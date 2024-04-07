@@ -137,10 +137,12 @@ class SeamImage:
         
         for row,col in enumerate(seam_to_remove):
             mask[row,col] = False
+            self.mask[row,col] = False
         
         self.resized_gs = self.resized_gs[mask].reshape(self.h, self.w ,1)
         mask = np.squeeze(np.stack([mask]*3,axis=2))
         self.resized_rgb = self.resized_rgb[mask].reshape(self.h,self.w,3)
+        self.mask = np.squeeze(self.mask,axis=2)
             
     def reinit(self):
         """re-initiates instance"""
@@ -416,10 +418,7 @@ class SCWithObjRemoval(VerticalSeamImage):
         """A wrapper for super.remove_seam method. takes care of the masks."""
         super().remove_seam()
         for k in self.active_masks:
-            print(self.mask.shape)
-            print(self.obj_masks[k].shape)
             self.obj_masks[k] = self.obj_masks[k][self.mask].reshape(self.h, self.w)
-
 
 def scale_to_shape(orig_shape: np.ndarray, scale_factors: list):
     """Converts scale into shape
