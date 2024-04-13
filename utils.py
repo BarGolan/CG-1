@@ -123,9 +123,14 @@ class SeamImage:
     def init_mats(self):
         pass
 
-    def update_ref_mat(self):
-        for i, s in enumerate(self.seam_history[-1]):
-            self.idx_map[i, s:] += 1       
+    def update_ref_mat(self,v_or_h_flag:str):
+        if v_or_h_flag == "horizontal":
+            for i, s in enumerate(self.seam_history[-1]):
+                self.idx_map_v[i, s:] += 1    
+        else:
+            for i, s in enumerate(self.seam_history[-1]):
+                self.idx_map_h[i, s:] += 1   
+
 
     def backtrack_seam(self):
         pass
@@ -176,9 +181,9 @@ class VerticalSeamImage(SeamImage):
             You might find the function 'np.roll' useful.
         """
         M = np.copy(self.E)
-        rolled_matrix_col_left = np.roll(self.E, -1, axis=1) #𝐼(𝑖, 𝑗 + 1)
-        rolled_matrix_col_right = np.roll(self.E, 1, axis=1) # 𝐼(𝑖, 𝑗 − 1)
-        rolled_matrix_row_down = np.roll(self.E, 1, axis=0)  #𝐼(𝑖 − 1, 𝑗)
+        rolled_matrix_col_left = np.roll(self.resized_gs, -1, axis=1) #𝐼(𝑖, 𝑗 + 1)
+        rolled_matrix_col_right = np.roll(self.resized_gs, 1, axis=1) # 𝐼(𝑖, 𝑗 − 1)
+        rolled_matrix_row_down = np.roll(self.resized_gs, 1, axis=0)  #𝐼(𝑖 − 1, 𝑗)
         rolled_matrix_col_left[:,-1]=0
         rolled_matrix_col_right[:,0]=0
         rolled_matrix_row_down[0,:]=0
@@ -192,7 +197,6 @@ class VerticalSeamImage(SeamImage):
         #CV(𝑖, 𝑗) = |𝐼(𝑖, 𝑗 + 1) − 𝐼(𝑖, 𝑗 − 1)|
 
         M[0, :] = self.E[0, :]
-        M[1:, :] = np.inf
 
         for i in range(1, self.h):
             left = np.roll(M[i - 1, :], 1)
@@ -241,7 +245,7 @@ class VerticalSeamImage(SeamImage):
             self.init_mats()
             VerticalSeamImage.calc_bt_mat(self.M, self.E, self.backtrack_mat)
             self.backtrack_seam()
-            self.update_ref_mat()
+            self.update_ref_mat(v_or_h_flag)
             self.remove_seam()
             self.paint_seam(v_or_h_flag)
         
@@ -274,7 +278,6 @@ class VerticalSeamImage(SeamImage):
         Parameters:
             num_remove (int): number of horizontal seam to be removed
         """
-        self.idx_map = self.idx_map_v
         self.rotate_mats(clockwise=True)
         self.seams_removal(num_remove,"horizontal")
         self.rotate_mats(clockwise=False)
@@ -287,7 +290,6 @@ class VerticalSeamImage(SeamImage):
         Parameters:
             num_remove (int): umber of vertical seam to be removed
         """
-        self.idx_map = self.idx_map_h
         self.seams_removal(num_remove,"vertical")
 
     # @NI_decor
@@ -401,12 +403,12 @@ class SCWithObjRemoval(VerticalSeamImage):
             - think how to force seams to pass through a mask's object..
         """
         for mask in self.active_masks:
-            self.M[self.obj_masks[mask]] = -np.inf
+            self.E[self.obj_masks[mask]] = - 1000
 
     def init_mats(self):
         self.E = self.calc_gradient_magnitude()
+        self.apply_mask() 
         self.M = self.calc_M()
-        self.apply_mask()  # -> added
         self.backtrack_mat = np.zeros_like(self.M, dtype=int)
         self.mask = np.ones_like(self.M, dtype=bool)
 
@@ -430,7 +432,7 @@ def scale_to_shape(orig_shape: np.ndarray, scale_factors: list):
     Returns
         the new shape
     """
-    raise NotImplementedError("TODO: Implement scale_to_shape")
+    return (orig_shape * np.array(scale_factors)).astype(int)
 
 
 def resize_seam_carving(seam_img: SeamImage, shapes: np.ndarray):
@@ -443,7 +445,10 @@ def resize_seam_carving(seam_img: SeamImage, shapes: np.ndarray):
     Returns
         the resized rgb image
     """
-    raise NotImplementedError("TODO: Implement resize_seam_carving")
+    number_of_vertical_seams , number_of_horizontal_seams = shapes[0][1] - shapes[1][1] , shapes[0][0] - shapes[1][0]
+    seam_img.seams_removal_vertical(number_of_vertical_seams)
+    seam_img.seams_removal_horizontal(number_of_horizontal_seams)
+    return seam_img.resized_rgb
 
 
 def bilinear(image, new_shape):
